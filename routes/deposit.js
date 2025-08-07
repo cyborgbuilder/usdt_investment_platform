@@ -1,30 +1,60 @@
 const express = require("express");
-const assignWalletToUser = require("../utils/wallet");
+const router = express.Router();
+const { ethers } = require("ethers");
 const User = require("../models/User");
 const QRCode = require("qrcode");
 
-const router = express.Router();
+const fundWallet = async (address) => {
+  try {
+    const provider = new ethers.JsonRpcProvider(
+      `https://sepolia.infura.io/v3/${process.env.ALCHEMY_URL}`
+    );
 
-// Generate wallet & return QR
+    const wallet = new ethers.Wallet(process.env.MANAGEMENT_WALLET_PRIVATE_KEY, provider);
+    const amountToSend = ethers.parseEther("0.005"); // ETH for gas
+
+    const tx = await wallet.sendTransaction({
+      to: address,
+      value: amountToSend
+    });
+
+    await tx.wait();
+    console.log(`✅ Auto-funded ${address} with ${ethers.formatEther(amountToSend)} ETH`);
+  } catch (error) {
+    console.error("❌ Error funding wallet:", error.message);
+  }
+};
+
 router.post("/generate-wallet/:userId", async (req, res) => {
   try {
-    let user = await User.findById(req.params.userId);
+    const user = await User.findById(req.params.userId);
     if (!user) return res.status(404).json({ msg: "User not found" });
 
-    let depositAddress = user.depositAddress;
-
-    if (!depositAddress) {
-      depositAddress = await assignWalletToUser(req.params.userId);
-      // update local variable instead of fetching again
+    // ✅ If wallet already exists, return it
+    if (user.depositAddress && user.depositPrivateKey) {
+      const qr = await QRCode.toDataURL(user.depositAddress);
+      return res.json({ address: user.depositAddress, qr });
     }
 
-    const qr = await QRCode.toDataURL(depositAddress);
-    res.json({ address: depositAddress, qr });
+    // ✅ Create a new wallet
+    const newWallet = ethers.Wallet.createRandom();
+
+    // ✅ Store address + private key securely
+    user.depositAddress = newWallet.address;
+    user.depositPrivateKey = newWallet.privateKey; // 🚨 Encrypt in production
+    await user.save();
+
+    // ✅ Automatically fund with ETH for gas
+    await fundWallet(newWallet.address);
+
+    // ✅ Generate QR Code
+    const qr = await QRCode.toDataURL(newWallet.address);
+
+    res.json({ address: newWallet.address, qr });
   } catch (error) {
-    console.error(error);
+    console.error("❌ Wallet generation error:", error);
     res.status(500).send("Server Error");
   }
 });
-
 
 module.exports = router;

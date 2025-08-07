@@ -1,5 +1,6 @@
 const { ethers } = require("ethers");
 const User = require("../models/User");
+const Transaction = require("../models/Transaction");
 require("dotenv").config();
 
 const abi = [
@@ -21,7 +22,7 @@ function startListener() {
 
     console.log("✅ Deposit listener started. Waiting for events...");
 
-    contract.on("Transfer", async (from, to, value) => {
+    contract.on("Transfer", async (from, to, value, event) => {
       try {
         console.log(`💰 Transfer detected: ${value} tokens to ${to}`);
 
@@ -30,7 +31,18 @@ function startListener() {
           const amount = Number(ethers.formatUnits(value, 18));
           user.balance += amount;
           await user.save();
-          console.log(`✅ Credited ${amount} USDT to user ${user.username}`);
+
+          // Save transaction record
+          const tx = new Transaction({
+            userId: user._id,
+            txHash: event.log.transactionHash,
+            type: "deposit",
+            amount,
+            status: "confirmed",
+          });
+          await tx.save();
+
+          console.log(`✅ Credited ${amount} USDT to user ${user.username}, tx saved`);
         }
       } catch (error) {
         console.error("❌ Error processing deposit:", error);
