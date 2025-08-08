@@ -1,10 +1,9 @@
 const express = require("express");
 const router = express.Router();
+const { ethers } = require("ethers");
 const User = require("../models/User");
 const Transaction = require("../models/Transaction");
 const Withdrawal = require("../models/Withdrawal");
-const Investment = require("../models/Investment");
-const { ethers } = require("ethers");
 const usdtABI = [
   "function transfer(address to, uint256 amount) public returns (bool)"
 ];
@@ -16,39 +15,21 @@ router.post("/:userId", async (req, res) => {
     const user = await User.findById(req.params.userId);
     if (!user) return res.status(404).json({ msg: "User not found" });
 
-    // Calculate total ROI earned
-    const roiTransactions = await Transaction.find({ userId: user._id, type: "roi" });
-    const totalROI = roiTransactions.reduce((sum, tx) => sum + tx.amount, 0);
-
-    // Total withdrawable funds
-    const totalFunds = user.balance + totalROI;
-
-    if (amount > totalFunds) {
-      return res.status(400).json({ msg: "Insufficient withdrawable funds" });
+    // ✅ Only allow withdrawal from deposit balance
+    if (amount > user.balance) {
+      return res.status(400).json({ msg: "Insufficient deposit balance" });
     }
 
-    // Deduct from deposit balance first
-    let remaining = amount;
-    if (user.balance >= remaining) {
-      user.balance -= remaining;
-      remaining = 0;
-    } else {
-      remaining -= user.balance;
-      user.balance = 0;
-    }
+    // Deduct immediately for safety (reversible on reject)
+    user.balance -= amount;
     await user.save();
 
-    // Deduct from ROI proportionally (mark transactions or track separately)
-    // For MVP, we just log withdrawal and do not modify ROI logs
-
-    // Create withdrawal record
     const withdrawal = await Withdrawal.create({
       userId: user._id,
       amount,
       status: "pending",
     });
 
-    // Log transaction
     await Transaction.create({
       userId: user._id,
       txHash: `internal_withdraw_${Date.now()}`,
@@ -65,20 +46,21 @@ router.post("/:userId", async (req, res) => {
   }
 });
 
-// GET /api/withdraw/:userId - fetch withdrawal history
+// GET /api/withdraw/:userId - Fetch user's withdrawal history
 router.get("/:userId", async (req, res) => {
   try {
     const withdrawals = await Withdrawal.find({ userId: req.params.userId }).sort({ requestedAt: -1 });
     res.json(withdrawals);
   } catch (error) {
-    console.error("❌ Error fetching withdrawals:", error);
+    console.error("❌ Fetch error:", error);
     res.status(500).send("Server Error");
   }
 });
 
+// POST /api/withdraw/admin/:withdrawalId - Admin approval/rejection
 router.post("/admin/:withdrawalId", async (req, res) => {
   try {
-    const { action } = req.body;
+    const { action, userWalletAddress } = req.body;
     const withdrawal = await Withdrawal.findById(req.params.withdrawalId);
     if (!withdrawal) return res.status(404).json({ msg: "Withdrawal not found" });
 
@@ -87,22 +69,15 @@ router.post("/admin/:withdrawalId", async (req, res) => {
     }
 
     if (action === "approve") {
-      // ✅ Build full Alchemy URL
+      if (!userWalletAddress) {
+        return res.status(400).json({ msg: "User wallet address required" });
+      }
+
       const provider = new ethers.JsonRpcProvider(
         `https://sepolia.infura.io/v3/${process.env.ALCHEMY_URL}`
       );
       const wallet = new ethers.Wallet(process.env.MANAGEMENT_WALLET_PRIVATE_KEY, provider);
-
-      const usdtContract = new ethers.Contract(
-        process.env.USDT_CONTRACT,
-        usdtABI,
-        wallet
-      );
-
-      const userWalletAddress = req.body.userWalletAddress;
-      if (!userWalletAddress) {
-        return res.status(400).json({ msg: "User wallet address is required for withdrawal" });
-      }
+      const usdtContract = new ethers.Contract(process.env.USDT_CONTRACT, usdtABI, wallet);
 
       const tx = await usdtContract.transfer(
         userWalletAddress,
@@ -151,20 +126,16 @@ router.post("/admin/:withdrawalId", async (req, res) => {
 // Admin: Get all withdrawals or filter by status
 router.get("/admin/all", async (req, res) => {
   try {
-    const { status } = req.query; // optional: ?status=pending
+    const { status } = req.query;
     const query = status ? { status } : {};
-
     const withdrawals = await Withdrawal.find(query)
       .populate("userId", "username balance")
       .sort({ requestedAt: -1 });
-
     res.json(withdrawals);
   } catch (error) {
-    console.error("❌ Admin fetch withdrawals error:", error);
+    console.error("❌ Admin fetch error:", error);
     res.status(500).send("Server Error");
   }
 });
-
-
 
 module.exports = router;

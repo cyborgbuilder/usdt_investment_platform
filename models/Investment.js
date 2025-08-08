@@ -7,6 +7,10 @@ const InvestmentSchema = new mongoose.Schema({
   startDate: { type: Date, default: Date.now },
   lastReturnDate: { type: Date, default: Date.now },
   status: { type: String, enum: ["active", "closed"], default: "active" },
+  roi: {
+    type: Number,
+    default: 0,
+  },
 });
 
 

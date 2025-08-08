@@ -1,33 +1,50 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const User = require("../models/User");
 const Investment = require("../models/Investment");
 const Transaction = require("../models/Transaction");
 
-// GET /api/user/:id/summary
+// GET /api/user/:userId/summary
 router.get("/:userId/summary", async (req, res) => {
   try {
     const userId = req.params.userId;
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ msg: "Invalid userId" });
+    }
 
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).lean();
     if (!user) return res.status(404).json({ msg: "User not found" });
 
-    // Total invested
-    const investments = await Investment.find({ userId, status: "active" });
-    const totalInvested = investments.reduce((sum, inv) => sum + inv.amount, 0);
+    // active investments
+    const investments = await Investment.find({ userId, status: "active" })
+      .select("amount roi")
+      .lean();
 
-    // Total ROI earned from transaction history
-    const roiTransactions = await Transaction.find({ userId, type: "roi" });
-    const totalROI = roiTransactions.reduce((sum, tx) => sum + tx.amount, 0);
+    const totalInvested = investments.reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
+    const currentlyClaimableROI = investments.reduce((sum, inv) => sum + Number(inv.roi || 0), 0);
 
-    // Total value = withdrawable balance + invested funds + ROI earned
-    const totalValue = user.balance + totalInvested + totalROI;
+    // cumulative claimed ROI (what actually got paid out)
+    // if you don't have "claim-roi" in enum, switch to { type: "roi", action: "claim" }
+    const claimedAgg = await Transaction.aggregate([
+      { $match: { userId: new mongoose.Types.ObjectId(userId), type: "claim-roi", status: "confirmed" } },
+      { $group: { _id: null, total: { $sum: "$amount" } } }
+    ]);
+    const totalEarnedROI = claimedAgg[0]?.total || 0;
 
-    res.json({
+    // choose the correct balance field
+    const balance = typeof user.depositBalance === "number" ? user.depositBalance : Number(user.balance || 0);
+
+    // Total value the user sees in-app: deposit balance + invested principal + unclaimed ROI
+    // (claimed ROI is already included in `balance`)
+    const totalValue = balance + totalInvested + currentlyClaimableROI;
+
+    return res.json({
       userId,
-      balance: user.balance,
+      balance,
       totalInvested,
-      totalROI,
+      currentlyClaimableROI, // goes to 0 right after claim
+      totalEarnedROI,        // lifetime claimed
       totalValue
     });
   } catch (error) {

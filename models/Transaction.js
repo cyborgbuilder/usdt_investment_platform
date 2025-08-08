@@ -7,7 +7,7 @@ const TransactionSchema = new mongoose.Schema({
     required: true,
   },
   txHash: { type: String, required: true },
-  type: { type: String, enum: ["deposit", "withdraw", "roi", "investment"], required: true },
+  type: { type: String, enum: ["deposit", "withdraw", "roi", "investment", "disinvest", "claim-roi"], required: true },
   amount: { type: Number, required: true },
   status: { type: String, enum: ["pending", "confirmed", "failed"], default: "confirmed" },
   timestamp: { type: Date, default: Date.now },

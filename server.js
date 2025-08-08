@@ -13,6 +13,8 @@ const userRoutes = require("./routes/user");
 // const totalPendingROIRoutes = require("./routes/totalPendingROI");
 const userSummaryRoutes = require("./routes/userSummary");
 const withdrawalRoutes = require("./routes/withdrawal");
+const disinvestRoutes = require("./routes/disinvest");
+const roiRoutes = require("./routes/roi"); 
 
 
 
@@ -47,6 +49,8 @@ app.use("/api/user", userRoutes);
 // app.use("/api/pending-roi", totalPendingROIRoutes);
 app.use("/api/user", userSummaryRoutes);
 app.use("/api/withdraw", withdrawalRoutes);
+app.use("/api/disinvest", disinvestRoutes);
+app.use("/api/roi", roiRoutes);       
 
 // Start Background Jobs
 startReturnJob();
