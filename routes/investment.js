@@ -31,10 +31,10 @@ const checkAndFundGas = async (targetAddress, provider) => {
 };
 
 // 📌 Create investment with on-chain USDT transfer
-router.post("/:userId", async (req, res) => {
+router.post("/", async (req, res) => {
   try {
     const { amount } = req.body;
-    const user = await User.findById(req.params.userId);
+    const user = await User.findById(req.user.userId);
 
     if (!user || user.balance < amount) {
       return res.status(400).json({ msg: "Insufficient balance" });
@@ -100,9 +100,9 @@ router.post("/:userId", async (req, res) => {
 });
 
 // 🔎 Get all investments for a user
-router.get("/:userId", async (req, res) => {
+router.get("/", async (req, res) => {
   try {
-    const investments = await Investment.find({ userId: req.params.userId });
+    const investments = await Investment.find({ userId: req.user.userId });
     res.json(investments);
   } catch (error) {
     console.error("❌ Get investments error:", error);

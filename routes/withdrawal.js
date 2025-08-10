@@ -4,15 +4,16 @@ const { ethers } = require("ethers");
 const User = require("../models/User");
 const Transaction = require("../models/Transaction");
 const Withdrawal = require("../models/Withdrawal");
+const { requireAdmin } = require("../middleware/auth.middleware");
 const usdtABI = [
   "function transfer(address to, uint256 amount) public returns (bool)"
 ];
 
-// POST /api/withdraw/:userId
-router.post("/:userId", async (req, res) => {
+// POST /api/withdraw
+router.post("/", async (req, res) => {
   try {
     const { amount } = req.body;
-    const user = await User.findById(req.params.userId);
+    const user = await User.findById(req.user.userId);
     if (!user) return res.status(404).json({ msg: "User not found" });
 
     // ✅ Only allow withdrawal from deposit balance
@@ -46,10 +47,10 @@ router.post("/:userId", async (req, res) => {
   }
 });
 
-// GET /api/withdraw/:userId - Fetch user's withdrawal history
-router.get("/:userId", async (req, res) => {
+// GET /api/withdraw - Fetch user's withdrawal history
+router.get("/", async (req, res) => {
   try {
-    const withdrawals = await Withdrawal.find({ userId: req.params.userId }).sort({ requestedAt: -1 });
+    const withdrawals = await Withdrawal.find({ userId: req.user.userId }).sort({ requestedAt: -1 });
     res.json(withdrawals);
   } catch (error) {
     console.error("❌ Fetch error:", error);
@@ -58,7 +59,7 @@ router.get("/:userId", async (req, res) => {
 });
 
 // POST /api/withdraw/admin/:withdrawalId - Admin approval/rejection
-router.post("/admin/:withdrawalId", async (req, res) => {
+router.post("/admin/:withdrawalId", requireAdmin, async (req, res) => {
   try {
     const { action, userWalletAddress } = req.body;
     const withdrawal = await Withdrawal.findById(req.params.withdrawalId);
@@ -124,7 +125,7 @@ router.post("/admin/:withdrawalId", async (req, res) => {
 });
 
 // Admin: Get all withdrawals or filter by status
-router.get("/admin/all", async (req, res) => {
+router.get("/admin/all", requireAdmin, async (req, res) => {
   try {
     const { status } = req.query;
     const query = status ? { status } : {};

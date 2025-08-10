@@ -25,9 +25,9 @@ const fundWallet = async (address) => {
   }
 };
 
-router.post("/generate-wallet/:userId", async (req, res) => {
+router.post("/generate-wallet", async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId);
+    const user = await User.findById(req.user.userId);
     if (!user) return res.status(404).json({ msg: "User not found" });
 
     // ✅ If wallet already exists, return it

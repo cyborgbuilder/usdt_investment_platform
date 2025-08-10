@@ -17,10 +17,10 @@ function toTokenUnits(amountFloat) {
   return ethers.parseUnits(Number(amountFloat).toFixed(TOKEN_DECIMALS), TOKEN_DECIMALS);
 }
 
-// POST /api/roi/claim/:userId
-router.post("/claim/:userId", async (req, res) => {
+// POST /api/roi/claim
+router.post("/claim", async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId);
+    const user = await User.findById(req.user.userId);
     if (!user || !user.depositAddress) {
       return res.status(404).json({ msg: "User or deposit wallet not found" });
     }

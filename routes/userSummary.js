@@ -5,10 +5,10 @@ const User = require("../models/User");
 const Investment = require("../models/Investment");
 const Transaction = require("../models/Transaction");
 
-// GET /api/user/:userId/summary
-router.get("/:userId/summary", async (req, res) => {
+// GET /api/user/summary
+router.get("/summary", async (req, res) => {
   try {
-    const userId = req.params.userId;
+    const userId = req.user.userId;
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({ msg: "Invalid userId" });
     }

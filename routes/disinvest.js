@@ -15,11 +15,11 @@ function toUnits(n) {
   return ethers.parseUnits(Number(n).toFixed(TOKEN_DECIMALS), TOKEN_DECIMALS);
 }
 
-// POST /api/disinvest/:userId
-router.post("/:userId", async (req, res) => {
+// POST /api/disinvest
+router.post("/", async (req, res) => {
   try {
     const { amount } = req.body;
-    const user = await User.findById(req.params.userId);
+    const user = await User.findById(req.user.userId);
 
     if (!user || !user.depositAddress) {
       return res.status(400).json({ msg: "Invalid user or missing deposit address" });

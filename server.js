@@ -3,9 +3,11 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const connectDB = require("./config/db");
 
+// Middleware
+const { authenticateToken } = require("./middleware/auth.middleware");
+
 // Routes
 const depositRoutes = require("./routes/deposit");
-const testUserRoutes = require("./routes/testUser");
 const transactionRoutes = require("./routes/transactions");
 const investmentRoutes = require("./routes/investment");
 const userRoutes = require("./routes/user");
@@ -14,11 +16,7 @@ const userRoutes = require("./routes/user");
 const userSummaryRoutes = require("./routes/userSummary");
 const withdrawalRoutes = require("./routes/withdrawal");
 const disinvestRoutes = require("./routes/disinvest");
-const roiRoutes = require("./routes/roi"); 
-
-
-
-
+const roiRoutes = require("./routes/roi");
 
 // Services
 const startDepositMonitor = require("./services/depositMonitor");
@@ -28,7 +26,12 @@ dotenv.config();
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // Connect to Database
@@ -40,17 +43,16 @@ app.get("/", (req, res) => {
 });
 
 // API Routes
-app.use("/api/deposit", depositRoutes);
-app.use("/api/test", testUserRoutes);
-app.use("/api/transactions", transactionRoutes);
-app.use("/api/investment", investmentRoutes); 
-app.use("/api/user", userRoutes);
+app.use("/api/deposit", authenticateToken, depositRoutes);
+app.use("/api/transactions", authenticateToken, transactionRoutes);
+app.use("/api/investment", authenticateToken, investmentRoutes);
+app.use("/api/user", authenticateToken, userRoutes);
 // app.use("/api/claim-roi", claimROIRoutes);
 // app.use("/api/pending-roi", totalPendingROIRoutes);
-app.use("/api/user", userSummaryRoutes);
-app.use("/api/withdraw", withdrawalRoutes);
-app.use("/api/disinvest", disinvestRoutes);
-app.use("/api/roi", roiRoutes);       
+app.use("/api/user", authenticateToken, userSummaryRoutes);
+app.use("/api/withdraw", authenticateToken, withdrawalRoutes);
+app.use("/api/disinvest", authenticateToken, disinvestRoutes);
+app.use("/api/roi", authenticateToken, roiRoutes);
 
 // Start Background Jobs
 startReturnJob();
