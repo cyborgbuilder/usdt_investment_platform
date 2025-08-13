@@ -10,7 +10,8 @@ const usdtABI = [
   "function balanceOf(address account) view returns (uint256)"
 ];
 
-const TOKEN_DECIMALS = Number(process.env.TOKEN_DECIMALS || 18); // 18 on test token; 6 on real USDT
+// CHANGED: default decimals 18 -> 6 (USDT on Ethereum mainnet)
+const TOKEN_DECIMALS = Number(process.env.TOKEN_DECIMALS || 6); // 6 on real USDT
 function toUnits(n) {
   return ethers.parseUnits(Number(n).toFixed(TOKEN_DECIMALS), TOKEN_DECIMALS);
 }
@@ -57,8 +58,8 @@ router.post("/:userId", async (req, res) => {
       return res.status(400).json({ msg: "No funds to disinvest" });
     }
 
-    // On-chain transfer from management wallet -> user's deposit address
-    const provider = new ethers.JsonRpcProvider(`https://sepolia.infura.io/v3/${process.env.ALCHEMY_URL}`);
+    // CHANGED: switch provider from Sepolia to Ethereum mainnet
+    const provider = new ethers.JsonRpcProvider(`https://mainnet.infura.io/v3/${process.env.ALCHEMY_URL}`);
     const signer = new ethers.Wallet(process.env.MANAGEMENT_WALLET_PRIVATE_KEY, provider);
     const usdt = new ethers.Contract(process.env.USDT_CONTRACT, usdtABI, signer);
 
@@ -68,7 +69,7 @@ router.post("/:userId", async (req, res) => {
       if (bal < toUnits(disinvestedAmount)) {
         return res.status(400).json({ msg: "Insufficient tokens in management wallet" });
       }
-    } catch { /* some test tokens may behave differently; ignore */ }
+    } catch { /* some tokens may behave differently; ignore */ }
 
     const tx = await usdt.transfer(user.depositAddress, toUnits(disinvestedAmount));
     const receipt = await tx.wait(1);

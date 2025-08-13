@@ -7,7 +7,8 @@ const abi = [
   "event Transfer(address indexed from, address indexed to, uint256 value)"
 ];
 
-const TOKEN_DECIMALS = Number(process.env.TOKEN_DECIMALS || 18);
+// CHANGED: default decimals 18 -> 6 for mainnet USDT
+const TOKEN_DECIMALS = Number(process.env.TOKEN_DECIMALS || 6);
 const MANAGEMENT_WALLET_ADDRESS = (process.env.MANAGEMENT_WALLET_ADDRESS || "").toLowerCase();
 
 let provider;
@@ -27,16 +28,17 @@ function scheduleReconnect() {
 }
 
 function startListener() {
-  const wsUrl = `wss://sepolia.infura.io/ws/v3/${process.env.ALCHEMY_URL}`;
+  // CHANGED: Sepolia -> Mainnet WS endpoint
+  const wsUrl = `wss://mainnet.infura.io/ws/v3/${process.env.ALCHEMY_URL}`;
 
   try {
     console.log("🔌 Connecting to Infura WebSocket...");
     provider = new ethers.WebSocketProvider(wsUrl);
-    contract  = new ethers.Contract(process.env.USDT_CONTRACT, abi, provider);
+    contract = new ethers.Contract(process.env.USDT_CONTRACT, abi, provider);
 
     console.log("✅ Deposit listener started. Waiting for events...");
 
-    // Try to hook underlying websocket if available (ethers v6 does not expose provider.on('close'))
+    // Try to hook underlying websocket if available
     const ws = provider._websocket || provider.websocket || provider._ws;
     if (ws && typeof ws.on === "function") {
       ws.on("close", (code) => {
@@ -65,15 +67,15 @@ function startListener() {
         const fromLc = (from || "").toLowerCase();
         const isFromManagement = MANAGEMENT_WALLET_ADDRESS && fromLc === MANAGEMENT_WALLET_ADDRESS;
 
-        // 🚫 NEW RULE: if deposit comes from the management wallet, do NOT save or credit
+        // Skip credits from management wallet (internal ops like disinvest/claim)
         if (isFromManagement) {
           console.log(`⏭️ Skipping management-origin transfer ${txHash} → user ${user._id}`);
           return;
         }
 
-        // Keep existing type if a route already wrote this tx (e.g., 'disinvest' / 'claim-roi')
+        // Keep existing type if already written elsewhere
         const existing = await Transaction.findOne({ txHash }).select("type").lean();
-        const defaultType = "deposit"; // unchanged for non-management flows
+        const defaultType = "deposit";
         const finalType = existing?.type || defaultType;
 
         // Upsert by txHash to ensure idempotency
@@ -95,8 +97,6 @@ function startListener() {
           const balanceField = typeof user.depositBalance === "number" ? "depositBalance" : "balance";
           await User.updateOne({ _id: user._id }, { $inc: { [balanceField]: amount } });
           console.log(`💸 +${amount} (${finalType}) → ${balanceField} for user ${user._id} | tx ${txHash}`);
-        } else {
-          // already processed elsewhere — no double credit
         }
       } catch (err) {
         console.error("❌ Error processing transfer:", err);

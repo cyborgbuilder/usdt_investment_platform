@@ -4,7 +4,7 @@ require("dotenv").config();
 async function fundWallet(targetAddress) {
   try {
     const provider = new ethers.JsonRpcProvider(
-      `https://sepolia.infura.io/v3/${process.env.ALCHEMY_URL}`
+      `https://mainnet.infura.io/v3/${process.env.ALCHEMY_URL}` // CHANGED: sepolia -> mainnet
     );
 
     // ✅ Load management wallet

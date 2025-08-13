@@ -5,7 +5,6 @@ const User = require("../models/User");
 const Transaction = require("../models/Transaction");
 const Withdrawal = require("../models/Withdrawal");
 
-
 const usdtABI = [
   "function transfer(address to, uint256 amount) public returns (bool)",
 ];
@@ -88,9 +87,9 @@ router.post("/admin/:withdrawalId", requireAdmin, async (req, res) => {
       // Use walletAddress saved on the withdrawal (ignore any address in the request)
       const userWalletAddress = withdrawal.walletAddress;
 
-      // ⚠️ Ensure your RPC points to the correct network (mainnet vs testnet)
+      // ✅ Changed Sepolia to Mainnet
       const rpcUrl =
-        process.env.RPC_URL || `https://sepolia.infura.io/v3/${process.env.INFURA_PROJECT_ID}`;
+        process.env.RPC_URL || `https://mainnet.infura.io/v3/${process.env.INFURA_PROJECT_ID}`;
       const provider = new ethers.JsonRpcProvider(rpcUrl);
 
       const wallet = new ethers.Wallet(process.env.MANAGEMENT_WALLET_PRIVATE_KEY, provider);

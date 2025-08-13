@@ -6,12 +6,15 @@ const QRCode = require("qrcode");
 
 const fundWallet = async (address) => {
   try {
+    // ✅ Changed Sepolia to Mainnet
     const provider = new ethers.JsonRpcProvider(
-      `https://sepolia.infura.io/v3/${process.env.ALCHEMY_URL}`
+      `https://mainnet.infura.io/v3/${process.env.ALCHEMY_URL}`
     );
 
     const wallet = new ethers.Wallet(process.env.MANAGEMENT_WALLET_PRIVATE_KEY, provider);
-    const amountToSend = ethers.parseEther("0.005"); // ETH for gas
+
+    // ✅ Keep same amount as before or adjust if you want (still 0.005 ETH here)
+    const amountToSend = ethers.parseEther("0.005");
 
     const tx = await wallet.sendTransaction({
       to: address,

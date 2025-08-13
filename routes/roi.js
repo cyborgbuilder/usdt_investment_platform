@@ -12,7 +12,8 @@ const usdtABI = [
 ];
 
 // Config
-const TOKEN_DECIMALS = Number(process.env.TOKEN_DECIMALS || 18); // USDT=6, test token=18
+// CHANGED: default decimals 18 -> 6 for mainnet USDT
+const TOKEN_DECIMALS = Number(process.env.TOKEN_DECIMALS || 6); // USDT=6, test token=18
 function toTokenUnits(amountFloat) {
   return ethers.parseUnits(Number(amountFloat).toFixed(TOKEN_DECIMALS), TOKEN_DECIMALS);
 }
@@ -49,7 +50,8 @@ router.post("/claim/:userId", async (req, res) => {
       }
 
       // Blockchain transfer
-      const provider = new ethers.JsonRpcProvider(`https://sepolia.infura.io/v3/${process.env.ALCHEMY_URL}`);
+      // CHANGED: Sepolia -> Mainnet
+      const provider = new ethers.JsonRpcProvider(`https://mainnet.infura.io/v3/${process.env.ALCHEMY_URL}`);
       const managementWallet = new ethers.Wallet(process.env.MANAGEMENT_WALLET_PRIVATE_KEY, provider);
       const usdt = new ethers.Contract(process.env.USDT_CONTRACT, usdtABI, managementWallet);
 

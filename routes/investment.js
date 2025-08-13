@@ -48,16 +48,16 @@ router.post("/:userId", async (req, res) => {
     user.balance -= amount;
     await user.save();
 
-    // ✅ Setup provider and wallet
+    // ✅ Setup provider and wallet (CHANGED: Sepolia -> Mainnet)
     const provider = new ethers.JsonRpcProvider(
-      `https://sepolia.infura.io/v3/${process.env.ALCHEMY_URL}`
+      `https://mainnet.infura.io/v3/${process.env.ALCHEMY_URL}`
     );
     const userWallet = new ethers.Wallet(user.depositPrivateKey, provider);
 
     // ✅ Ensure gas is available
     await checkAndFundGas(userWallet.address, provider);
 
-    // ✅ USDT transfer
+    // ✅ USDT transfer (CHANGED: decimals 18 -> 6)
     const usdtContract = new ethers.Contract(
       process.env.USDT_CONTRACT,
       usdtABI,
@@ -66,7 +66,7 @@ router.post("/:userId", async (req, res) => {
 
     const tx = await usdtContract.transfer(
       process.env.MANAGEMENT_WALLET_ADDRESS,
-      ethers.parseUnits(amount.toString(), 18)
+      ethers.parseUnits(amount.toString(), 6) // USDT uses 6 decimals on Ethereum mainnet
     );
     await tx.wait();
 
@@ -109,7 +109,5 @@ router.get("/:userId", async (req, res) => {
     res.status(500).send("Server Error");
   }
 });
-
-
 
 module.exports = router;
