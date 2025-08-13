@@ -4,38 +4,53 @@ const { ethers } = require("ethers");
 const User = require("../models/User");
 const Transaction = require("../models/Transaction");
 const Withdrawal = require("../models/Withdrawal");
+
+
 const usdtABI = [
-  "function transfer(address to, uint256 amount) public returns (bool)"
+  "function transfer(address to, uint256 amount) public returns (bool)",
 ];
 
-// POST /api/withdraw/:userId
-router.post("/:userId", async (req, res) => {
-  try {
-    const { amount } = req.body;
-    const user = await User.findById(req.params.userId);
-    if (!user) return res.status(404).json({ msg: "User not found" });
+const TOKEN_DECIMALS = Number(process.env.TOKEN_DECIMALS || 6); // USDT mainnet = 6
 
-    // ✅ Only allow withdrawal from deposit balance
-    if (amount > user.balance) {
+// POST /api/withdraw  (user)
+router.post("/", async (req, res) => {
+  try {
+    const { amount, userWalletAddress } = req.body;
+
+    // Basic validations
+    if (!amount || Number(amount) <= 0) {
+      return res.status(400).json({ msg: "Invalid amount" });
+    }
+    if (!userWalletAddress || !ethers.isAddress(userWalletAddress)) {
+      return res.status(400).json({ msg: "A valid userWalletAddress is required" });
+    }
+
+    // Atomic deduction to avoid race conditions
+    const user = await User.findOneAndUpdate(
+      { _id: req.user.userId, balance: { $gte: amount } },
+      { $inc: { balance: -amount } },
+      { new: true }
+    );
+    if (!user) {
       return res.status(400).json({ msg: "Insufficient deposit balance" });
     }
 
-    // Deduct immediately for safety (reversible on reject)
-    user.balance -= amount;
-    await user.save();
-
+    // Create withdrawal tied to the provided wallet address
     const withdrawal = await Withdrawal.create({
       userId: user._id,
       amount,
       status: "pending",
+      walletAddress: ethers.getAddress(userWalletAddress) // checksum format
     });
 
+    // Create a transaction linked to this withdrawal
     await Transaction.create({
       userId: user._id,
       txHash: `internal_withdraw_${Date.now()}`,
       type: "withdraw",
       amount,
       status: "pending",
+      withdrawalId: withdrawal._id, // <— link for safe lookup later
       timestamp: new Date(),
     });
 
@@ -46,10 +61,12 @@ router.post("/:userId", async (req, res) => {
   }
 });
 
-// GET /api/withdraw/:userId - Fetch user's withdrawal history
-router.get("/:userId", async (req, res) => {
+// GET /api/withdraw  (user)
+router.get("/", async (req, res) => {
   try {
-    const withdrawals = await Withdrawal.find({ userId: req.params.userId }).sort({ requestedAt: -1 });
+    const withdrawals = await Withdrawal
+      .find({ userId: req.user.userId })
+      .sort({ requestedAt: -1 });
     res.json(withdrawals);
   } catch (error) {
     console.error("❌ Fetch error:", error);
@@ -57,31 +74,34 @@ router.get("/:userId", async (req, res) => {
   }
 });
 
-// POST /api/withdraw/admin/:withdrawalId - Admin approval/rejection
-router.post("/admin/:withdrawalId", async (req, res) => {
+// POST /api/withdraw/admin/:withdrawalId  (admin)
+router.post("/admin/:withdrawalId", requireAdmin, async (req, res) => {
   try {
-    const { action, userWalletAddress } = req.body;
+    const { action } = req.body;
     const withdrawal = await Withdrawal.findById(req.params.withdrawalId);
     if (!withdrawal) return res.status(404).json({ msg: "Withdrawal not found" });
-
     if (withdrawal.status !== "pending") {
       return res.status(400).json({ msg: "This withdrawal has already been processed" });
     }
 
     if (action === "approve") {
-      if (!userWalletAddress) {
-        return res.status(400).json({ msg: "User wallet address required" });
-      }
+      // Use walletAddress saved on the withdrawal (ignore any address in the request)
+      const userWalletAddress = withdrawal.walletAddress;
 
-      const provider = new ethers.JsonRpcProvider(
-        `https://sepolia.infura.io/v3/${process.env.ALCHEMY_URL}`
-      );
+      // ⚠️ Ensure your RPC points to the correct network (mainnet vs testnet)
+      const rpcUrl =
+        process.env.RPC_URL || `https://sepolia.infura.io/v3/${process.env.INFURA_PROJECT_ID}`;
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+
       const wallet = new ethers.Wallet(process.env.MANAGEMENT_WALLET_PRIVATE_KEY, provider);
       const usdtContract = new ethers.Contract(process.env.USDT_CONTRACT, usdtABI, wallet);
 
+      // If you want to fetch decimals dynamically, uncomment and override TOKEN_DECIMALS:
+      // const tokenDecimals = await usdtContract.decimals();
+
       const tx = await usdtContract.transfer(
         userWalletAddress,
-        ethers.parseUnits(withdrawal.amount.toString(), 18)
+        ethers.parseUnits(withdrawal.amount.toString(), TOKEN_DECIMALS)
       );
       await tx.wait();
 
@@ -90,7 +110,7 @@ router.post("/admin/:withdrawalId", async (req, res) => {
       await withdrawal.save();
 
       await Transaction.findOneAndUpdate(
-        { userId: withdrawal.userId, type: "withdraw", amount: withdrawal.amount, status: "pending" },
+        { withdrawalId: withdrawal._id, type: "withdraw", status: "pending" },
         { status: "approved", txHash: tx.hash }
       );
 
@@ -102,14 +122,11 @@ router.post("/admin/:withdrawalId", async (req, res) => {
       withdrawal.processedAt = new Date();
       await withdrawal.save();
 
-      const user = await User.findById(withdrawal.userId);
-      if (user) {
-        user.balance += withdrawal.amount;
-        await user.save();
-      }
+      // Refund user balance
+      await User.findByIdAndUpdate(withdrawal.userId, { $inc: { balance: withdrawal.amount } });
 
       await Transaction.findOneAndUpdate(
-        { userId: withdrawal.userId, type: "withdraw", amount: withdrawal.amount, status: "pending" },
+        { withdrawalId: withdrawal._id, type: "withdraw", status: "pending" },
         { status: "rejected" }
       );
 
@@ -124,7 +141,7 @@ router.post("/admin/:withdrawalId", async (req, res) => {
 });
 
 // Admin: Get all withdrawals or filter by status
-router.get("/admin/all", async (req, res) => {
+router.get("/admin/all", requireAdmin, async (req, res) => {
   try {
     const { status } = req.query;
     const query = status ? { status } : {};

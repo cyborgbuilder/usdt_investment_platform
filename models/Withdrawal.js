@@ -14,6 +14,7 @@ const WithdrawalSchema = new mongoose.Schema({
   },
   requestedAt: { type: Date, default: Date.now },
   processedAt: { type: Date },
+  walletAddress: { type: String, required: true },
 });
 
 module.exports = mongoose.model("Withdrawal", WithdrawalSchema);
